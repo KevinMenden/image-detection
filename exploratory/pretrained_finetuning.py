@@ -8,6 +8,7 @@ import os
 from torchvision import models
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -23,7 +24,12 @@ class ImageDataset(Dataset):
         self.transform = transform
         self.label_names = pd.read_csv(label_name_path, index_col=0)
 
-        self.images = list(set(self.labels.index))
+        # subset labels
+        images = [x.replace(".jpg", "") for x in os.listdir(root_dir)]
+        self.labels = self.labels.loc[images, ]
+
+        self.images = list(self.labels.index)
+        self.image_labels = [np.array(self.labels.loc[img_id].item().split(",")).astype(int) for img_id in self.images]
 
     def __len__(self):
         return len(self.images)
@@ -35,23 +41,18 @@ class ImageDataset(Dataset):
 
         # Load image
         img_id = self.images[idx]
-        img_path = os.path.join(self.root_dir, self.images[idx] + ".jpg")
-        image = Image.open(img_path)
-
-        # Create label vector
-        image_label = np.array(self.labels.loc[img_id].item().split(",")).astype(int)
+        image = Image.open(os.path.join(self.root_dir, img_id + ".jpg"))
 
         # Apply transform
         if self.transform is not None:
             image = self.transform(image)
 
-        image = np.asarray(image)
-        sample = {'image': image, 'label': image_label}
+        return {'image': image, 'label': self.image_labels[idx]}
 
-        return sample
+data_path = "/home/kevin/deep_learning/OpenImages/"
+eval_freq = 50
 
-
-data_path = "/run/media/kevin/Volume/OpenImages/"
+writer = SummaryWriter(log_dir=os.path.join(data_path, "models"))
 
 transform = transforms.Compose(
     [transforms.Scale((299, 299)),
@@ -67,20 +68,25 @@ dataset = ImageDataset(label_file = csv_path, root_dir = root_dir,
 n_classes = len(dataset.label_names)
 print(f"{n_classes} classes")
 
-model = models.resnet18(pretrained=False)
+# Create model
+model = models.resnet18(pretrained=True)
 model.fc = nn.Linear(in_features=512, out_features=n_classes, bias=True)
+
+# load state dict
+#model.load_state_dict(torch.load(os.path.join(data_path, "models", "resnet18")))
 
 # specify device
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model.to(device)
 
-data_loader = DataLoader(dataset, batch_size=12, shuffle=True, num_workers=12)
-len(data_loader)
+data_loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=6, pin_memory=True)
 
 criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters())
 
-for epoch in range(1):  # loop over the dataset multiple times
+#writer.add_graph(model)
+global_step = 0
+for epoch in range(2):  # loop over the dataset multiple times
 
     running_loss = 0.0
     for i, batch in enumerate(data_loader):
@@ -99,12 +105,16 @@ for epoch in range(1):  # loop over the dataset multiple times
 
         # print statistics
         running_loss += loss.item()
-        if i % 100 == 0:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.6f' %
-                  (epoch + 1, i + 1, running_loss / 100))
+        global_step += 1
+        if i % eval_freq == 0:    # print every 2000 mini-batches
+            ep = epoch + 1
+            rl = running_loss / eval_freq
+            step = global_step
+            print('[%d, %5d] loss: %.6f' %(ep, step, rl))
+            writer.add_scalar('loss', rl, step)
             running_loss = 0.0
+    torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet18"))
 
 print('Finished Training')
 
 # Save the model
-torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet18"))
