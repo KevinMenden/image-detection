@@ -79,52 +79,32 @@ model.load_state_dict(torch.load(os.path.join(data_path, "models", "resnet18")))
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model.to(device)
 
-data_loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=6, pin_memory=True)
+data_loader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=6, pin_memory=True)
 
-criterion = nn.BCEWithLogitsLoss()
-optimizer = torch.optim.Adam(model.parameters())
+# Load a batch
+batch = next(iter(data_loader))
+labels = batch['label'].cpu().detach().numpy()
+images = batch['image'].to(device)
 
-#writer.add_graph(model)
-global_step = 0
-for epoch in range(10):  # loop over the dataset multiple times
+# run through network
+preds = model(images)
 
-    running_loss = 0.0
-    running_step = 0
-    for i, batch in enumerate(data_loader):
-        running_step += 1
-        # get the inputs; data is a list of [inputs, labels]
-        imgs = batch['image'].to(device)
-        labels = batch['label'].to(device)
+def sigmoid(x, derivative=False):
+    sigm = 1. / (1. + np.exp(-x))
+    if derivative:
+        return sigm * (1. - sigm)
+    return sigm
 
-        # zero the parameter gradients
-        optimizer.zero_grad()
+preds = preds.cpu().detach().numpy()
 
-        # forward + backward + optimize
-        outputs = model(imgs)
-        loss = criterion(outputs, labels.float())
-        loss.backward()
-        optimizer.step()
+res = np.round(sigmoid(preds))
 
-        # print statistics
-        running_loss += loss.item()
-        global_step += 1
-        if i % eval_freq == 0:    # print every 2000 mini-batches
-            ep = epoch + 1
-            rl = running_loss / running_step
-            step = global_step
-            print('[%d, %5d] loss: %.6f' %(ep, step, rl))
-            writer.add_scalar('loss', rl, step)
-            running_loss = 0.0
-            running_step = 0
-    torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet18"))
+TP = np.sum(np.logical_and(res == 1, labels == 1))
+TN = np.sum(np.logical_and(res == 0, labels == 0))
+FP = np.sum(np.logical_and(res == 1, labels == 0))
+FN = np.sum(np.logical_and(res == 0, labels == 1))
 
-print('Finished Training')
-
-# Save the model
-
-data_loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=6, pin_memory=True)
-sample = dataset[0]
-img = sample['image']
-lab = sample['label']
-
-model(img)
+sensitivity = TP / (TP + FN)
+specificity = TN / (TN + FP)
+accuracy = (TN + TP) / (TN + TP + FN + FP)
+f1 = 2 * (sensitivity * specificity) / (sensitivity + specificity)
