@@ -13,59 +13,29 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from torchvision import transforms, utils
+from utils import ImageDataset, calc_metrics
+from model import ResNet
 
 
-
-
-class ImageDataset(Dataset):
-    """Test Class"""
-
-    def __init__(self, label_file, root_dir, label_name_path, transform=None):
-        self.labels = pd.read_csv(label_file, index_col=0)
-        self.root_dir = root_dir
-        self.transform = transform
-        self.label_names = pd.read_csv(label_name_path, index_col=0)
-
-        # subset labels
-        images = [x.replace(".jpg", "") for x in os.listdir(root_dir)]
-        self.labels = self.labels.loc[images, ]
-
-        self.images = list(self.labels.index)
-        self.image_labels = [np.array(self.labels.loc[img_id].item().split(",")).astype(int) for img_id in self.images]
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        """ Get an image"""
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        # Load image
-        img_id = self.images[idx]
-        image = Image.open(os.path.join(self.root_dir, img_id + ".jpg"))
-
-        # Apply transform
-        if self.transform is not None:
-            image = self.transform(image)
-
-        return {'image': image, 'label': self.image_labels[idx]}
-
+# Define paths, parameters and variables
 data_path = "/home/kevin/deep_learning/OpenImages/"
+root_dir = os.path.join(data_path, "pics")
+csv_path = os.path.join(data_path, "open_image_labels_formatted.csv")
+label_name_path = os.path.join(data_path, "label_names.csv")
 
-writer = SummaryWriter(log_dir=os.path.join(data_path, "models"))
-
+# Image transform
 transform = transforms.Compose(
     [transforms.Scale((299, 299)),
      transforms.Grayscale(3),
      transforms.ToTensor()])
 
-root_dir = os.path.join(data_path, "pics")
-csv_path = os.path.join(data_path, "open_image_labels_formatted.csv")
-label_name_path = os.path.join(data_path, "label_names.csv")
+# Create a summary writer
+writer = SummaryWriter(log_dir=os.path.join(data_path, "models"))
+
+
 
 # Create dataset and train-test split
-dataset = ImageDataset(label_file = csv_path, root_dir = root_dir,
+dataset =  ImageDataset(label_file = csv_path, root_dir = root_dir,
                        label_name_path = label_name_path, transform=transform)
 
 train_size = int(0.98 * len(dataset))
@@ -81,12 +51,8 @@ n_classes = len(dataset.label_names)
 print(f"{n_classes} classes")
 
 # Create model
-model = models.resnet18(pretrained=False)
-test = models.resnet18(pretrained=False)
-model.fc = nn.Linear(in_features=512, out_features=n_classes, bias=True)
+model = ResNet(n_classes=n_classes, in_size=64)
 
-# load state dict
-#model.load_state_dict(torch.load(os.path.join(data_path, "models", "resnet18")))
 
 # specify device
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -95,8 +61,6 @@ model.to(device)
 # Loss and optimzier
 criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters())
-
-
 
 eval_freq = 100
 test_freq = 1000
@@ -164,8 +128,6 @@ for epoch in range(10, 20):  # loop over the dataset multiple times
             writer.add_scalars('Accuracy', {'Train': train_accuracy,
                                             'Eval': accuracy}, global_step)
 
-    torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet18"))
+    torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet"))
 
 print('Finished Training')
-
-# Save the model
