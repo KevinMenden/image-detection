@@ -31,7 +31,7 @@ class ResNetBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_size)
 
         self.downsample = nn.Sequential(
-            nn.Conv2d(self.in_size, self.out_size, stride_conv1),
+            nn.Conv2d(self.in_size, self.out_size, stride=stride_conv1, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(self.out_size)
         )
 
@@ -46,7 +46,7 @@ class ResNetBlock(nn.Module):
         out = self.bn2(out)
 
         # Downsample the residual connection
-        if self.in_size != self.out_size or self.stride_conv1 != 1:
+        if self.stride_conv1 != 1:
             identity = self.downsample(identity)
 
         # Residual connection
@@ -75,13 +75,15 @@ class ResNet(nn.Module):
         # Layer 1
         self.layer1 = nn.Sequential(
             ResNetBlock(self.in_size, 64),
+            ResNetBlock(self.in_size, 64),
             ResNetBlock(self.in_size, 64)
         )
+
 
         # Layer 2
         self.layer2 = nn.Sequential(
             ResNetBlock(self.in_size, 128, stride_conv1=2, stride_conv2=1),
-            nn.Conv2d(64, 128, kernel_size=1, stride=2, bias=False),
+            nn.Conv2d(128, 128, kernel_size=1, stride=2, bias=False),
             nn.BatchNorm2d(128),
             ResNetBlock(128, 128)
         )
@@ -89,18 +91,18 @@ class ResNet(nn.Module):
         # Layer 3
         self.layer3 = nn.Sequential(
             ResNetBlock(128, 256, stride_conv1=2, stride_conv2=1),
-            nn.Conv2d(128, 256, kernel_size=1, stride=2, bias=False),
+            nn.Conv2d(256, 256, kernel_size=1, stride=2, bias=False),
             nn.BatchNorm2d(256),
             ResNetBlock(256, 256)
         )
 
+        # Layer 4
         self.layer4 = nn.Sequential(
             ResNetBlock(256, 512, stride_conv1=2, stride_conv2=1),
-            nn.Conv2d(256, 512, kernel_size=1, stride=2, bias=False),
+            nn.Conv2d(512, 512, kernel_size=1, stride=2, bias=False),
             nn.BatchNorm2d(512),
             ResNetBlock(512, 512)
         )
-        # Layer 4
 
         # head
         self.avpool = nn.AdaptiveAvgPool2d((1,1))
@@ -126,6 +128,3 @@ class ResNet(nn.Module):
 
         return x
 
-
-
-model = ResNet(n_classes=601, in_size=64)

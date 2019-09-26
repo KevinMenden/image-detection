@@ -5,14 +5,10 @@ Mainly to get the input pipeline up and running
 """
 import torch
 import os
-from torchvision import models
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import  DataLoader, Subset
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
-import pandas as pd
-from PIL import Image
-from torchvision import transforms, utils
+from torchvision import transforms
 from utils import ImageDataset, calc_metrics
 from model import ResNet
 
@@ -38,9 +34,11 @@ writer = SummaryWriter(log_dir=os.path.join(data_path, "models"))
 dataset =  ImageDataset(label_file = csv_path, root_dir = root_dir,
                        label_name_path = label_name_path, transform=transform)
 
-train_size = int(0.98 * len(dataset))
-test_size = len(dataset) - train_size
-train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+data_size = len(dataset)
+test_size = 100
+train_size = data_size - test_size
+train_dataset = Subset(dataset, list(range(0, train_size)))
+test_dataset = Subset(dataset, list(range(train_size, data_size)))
 
 # Create data loader
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=6, pin_memory=True)
@@ -53,7 +51,6 @@ print(f"{n_classes} classes")
 # Create model
 model = ResNet(n_classes=n_classes, in_size=64)
 
-
 # specify device
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model.to(device)
@@ -65,7 +62,7 @@ optimizer = torch.optim.Adam(model.parameters())
 eval_freq = 100
 test_freq = 1000
 global_step = 0
-for epoch in range(10, 20):  # loop over the dataset multiple times
+for epoch in range(0, 20):  # loop over the dataset multiple times
 
     running_step = 0
     for i, batch in enumerate(train_loader):
