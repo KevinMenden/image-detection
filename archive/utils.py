@@ -15,21 +15,24 @@ from PIL import Image
 from torchvision import transforms, utils
 
 
-class ImageDataset(Dataset):
-    """OpenImage Picture dataset"""
+class WildcamDataset(Dataset):
+    """Wildcam Image Dataset"""
 
-    def __init__(self, label_file, root_dir, label_name_path, transform=None):
-        self.labels = pd.read_csv(label_file, index_col=0)
+    def __init__(self, label_file, root_dir, transform=None, n_classes=23):
+        self.labels = pd.read_csv(label_file)
         self.root_dir = root_dir
         self.transform = transform
-        self.label_names = pd.read_csv(label_name_path, index_col=0)
+        self.n_classes = n_classes
+        # Get images
+        self.images = np.array(self.labels['file_name'])
 
-        # subset labels
-        images = [x.replace(".jpg", "") for x in os.listdir(root_dir)]
-        self.labels = self.labels.loc[images, ]
+        # Create one-hot encoded labels
+        lab_vec = np.zeros((self.labels.shape[0], self.n_classes))
+        for idx in range(lab_vec.shape[0]):
+            lab_vec[idx][self.labels['category_id'][idx]] = 1
+        self.labels = lab_vec
 
-        self.images = list(self.labels.index)
-        self.image_labels = [np.array(self.labels.loc[img_id].item().split(",")).astype(int) for img_id in self.images]
+
 
     def __len__(self):
         return len(self.images)
@@ -40,14 +43,14 @@ class ImageDataset(Dataset):
             idx = idx.tolist()
 
         # Load image
-        img_id = self.images[idx]
-        image = Image.open(os.path.join(self.root_dir, img_id + ".jpg"))
+        img = self.images[idx]
+        image = Image.open(os.path.join(self.root_dir, img))
 
         # Apply transform
         if self.transform is not None:
             image = self.transform(image)
 
-        return {'image': image, 'label': self.image_labels[idx]}
+        return {'image': image, 'label': self.labels[idx]}
 
 
 def sigmoid(x, derivative=False):

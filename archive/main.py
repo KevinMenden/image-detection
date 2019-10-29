@@ -9,9 +9,8 @@ from torch.utils.data import  DataLoader, Subset
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
-from utils import ImageDataset, calc_metrics
-from model import ResNet
-
+from archive.utils import ImageDataset, calc_metrics
+from torchvision import models
 
 # Define paths, parameters and variables
 data_path = "/home/kevin/deep_learning/OpenImages/"
@@ -21,12 +20,16 @@ label_name_path = os.path.join(data_path, "label_names.csv")
 
 # Image transform
 transform = transforms.Compose(
-    [transforms.Scale((299, 299)),
+    [transforms.Resize((299, 299)),
+     transforms.RandomHorizontalFlip(),
+     transforms.RandomPerspective(),
+     transforms.RandomResizedCrop((299, 299)),
+     transforms.RandomRotation(30),
      transforms.Grayscale(3),
      transforms.ToTensor()])
 
 # Create a summary writer
-writer = SummaryWriter(log_dir=os.path.join(data_path, "models"))
+writer = SummaryWriter(log_dir=os.path.join(data_path, "models/resnet34/"))
 
 
 
@@ -42,14 +45,19 @@ test_dataset = Subset(dataset, list(range(train_size, data_size)))
 
 # Create data loader
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=6, pin_memory=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True, num_workers=6, pin_memory=True)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=True, num_workers=6, pin_memory=True)
 
 # Get number of classes
 n_classes = len(dataset.label_names)
 print(f"{n_classes} classes")
 
 # Create model
-model = ResNet(n_classes=n_classes, in_size=64)
+#model = ResNet(n_classes=n_classes, in_size=64)
+model = models.resnet34(pretrained=False)
+model.fc = nn.Linear(in_features=512, out_features=n_classes, bias=True)
+
+# load params
+#model.load_state_dict(torch.load(os.path.join(data_path, "models", "resnet50/resnet_model")))
 
 # specify device
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -57,12 +65,12 @@ model.to(device)
 
 # Loss and optimzier
 criterion = nn.BCEWithLogitsLoss()
-optimizer = torch.optim.Adam(model.parameters())
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 eval_freq = 100
 test_freq = 1000
 global_step = 0
-for epoch in range(0, 20):  # loop over the dataset multiple times
+for epoch in range(0, 15):  # loop over the dataset multiple times
 
     running_step = 0
     for i, batch in enumerate(train_loader):
@@ -125,6 +133,6 @@ for epoch in range(0, 20):  # loop over the dataset multiple times
             writer.add_scalars('Accuracy', {'Train': train_accuracy,
                                             'Eval': accuracy}, global_step)
 
-    torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet"))
+    torch.save(model.state_dict(), os.path.join(data_path, "models", "resnet34/resnet_model"))
 
 print('Finished Training')
